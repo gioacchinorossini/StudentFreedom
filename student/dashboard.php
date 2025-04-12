@@ -1804,14 +1804,7 @@ $posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     </div>
                     <div class="post-content-expanded"></div>
                     <div class="post-actions-expanded mt-4">
-                        <a href="#" class="action-btn-expanded" onclick="handleModalReaction(event, document.getElementById('postExpansionModal').dataset.postId, 'like'); return false;">
-                            <i class="fas fa-heart"></i>
-                            <span class="like-count" id="modal-like-count"></span>
-                        </a>
-                        <a href="#" class="action-btn-expanded" onclick="handleModalReaction(event, document.getElementById('postExpansionModal').dataset.postId, 'dislike'); return false;">
-                            <i class="fas fa-thumbs-down"></i>
-                            <span class="dislike-count" id="modal-dislike-count"></span>
-                        </a>
+                        <!-- This div will be filled with the post actions -->
                     </div>
                     
                     <!-- Comments Section -->
@@ -1889,43 +1882,36 @@ $posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
             const modalActions = document.querySelector('#postExpansionModal .post-actions-expanded');
 
             postCards.forEach(card => {
-                card.addEventListener('click', function() {
+                card.addEventListener('click', function(e) {
+                    // Don't open modal when clicking on action buttons
+                    if (e.target.closest('.action-btn')) {
+                        return;
+                    }
+                    
                     const postId = this.dataset.postId;
                     const title = this.querySelector('.post-title').textContent;
                     const content = this.querySelector('.post-text').textContent;
                     const author = this.querySelector('.post-meta span:first-child').textContent;
                     const date = this.querySelector('.post-meta span:last-child').textContent;
                     const commentCount = this.querySelector('.action-btn:nth-child(3) span').textContent;
-                    const likeCount = this.querySelector('.action-btn:nth-child(1) span').textContent;
-                    const dislikeCount = this.querySelector('.action-btn:nth-child(2) span').textContent;
-                    const isLiked = this.querySelector('.action-btn:nth-child(1)').classList.contains('active');
-                    const isDisliked = this.querySelector('.action-btn:nth-child(2)').classList.contains('active');
-
+                    
                     modalTitle.textContent = title;
                     modalAuthor.textContent = author;
                     modalDate.textContent = date;
                     modalContent.textContent = content;
                     document.querySelector('.comment-count').textContent = `${commentCount} comments`;
 
-                    // Update action buttons
-                    const likeBtn = modalActions.querySelector('.action-btn-expanded:nth-child(1)');
-                    const dislikeBtn = modalActions.querySelector('.action-btn-expanded:nth-child(2)');
-
-                    likeBtn.onclick = (e) => handleModalReaction(e, 'like');
-                    dislikeBtn.onclick = (e) => handleModalReaction(e, 'dislike');
-
-                    likeBtn.querySelector('.like-count').textContent = likeCount;
-                    dislikeBtn.querySelector('.dislike-count').textContent = dislikeCount;
-
-                    likeBtn.classList.toggle('active', isLiked);
-                    dislikeBtn.classList.toggle('active', isDisliked);
-
-                    // Store post ID in modal for comment submission
+                    // Clone the post actions
+                    const actionsClone = this.querySelector('.post-actions').cloneNode(true);
+                    modalActions.innerHTML = '';
+                    modalActions.appendChild(actionsClone);
+                    
+                    // Store post ID in modal
                     document.getElementById('postExpansionModal').dataset.postId = postId;
 
-                    // Load comments for this post
+                    // Load comments
                     loadComments(postId);
-
+                    
                     postModal.show();
                 });
             });
@@ -2475,16 +2461,63 @@ $posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
             event.preventDefault();
             event.stopPropagation();
             
-            const button = event.currentTarget;
-            const postCard = button.closest('.post-card');
-            const likeCount = postCard.querySelector('.like-count');
-            const dislikeCount = postCard.querySelector('.dislike-count');
-            const likeButton = postCard.querySelector('.action-btn:first-child');
-            const dislikeButton = postCard.querySelector('.action-btn:nth-child(2)');
+            // Get all instances of this post's action buttons (both in card and modal)
+            const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
+            const modal = document.getElementById('postExpansionModal');
+            const isModalOpen = modal && modal.classList.contains('show') && modal.dataset.postId == postId;
             
-            // Store current state
-            const wasLiked = likeButton.classList.contains('active');
-            const wasDisliked = dislikeButton.classList.contains('active');
+            // Get all like/dislike buttons and counts for this post
+            const allContainers = [postCard];
+            if (isModalOpen) {
+                allContainers.push(modal.querySelector('.post-actions-expanded'));
+            }
+            
+            // Update UI immediately on all instances
+            allContainers.forEach(container => {
+                if (!container) return;
+                
+                const likeButton = container.querySelector('.action-btn:first-child');
+                const dislikeButton = container.querySelector('.action-btn:nth-child(2)');
+                const likeCount = likeButton.querySelector('.like-count');
+                const dislikeCount = dislikeButton.querySelector('.dislike-count');
+                
+                const wasLiked = likeButton.classList.contains('active');
+                const wasDisliked = dislikeButton.classList.contains('active');
+                
+                if (action === 'like') {
+                    if (wasLiked) {
+                        // Unlike
+                        likeButton.classList.remove('active');
+                        likeCount.textContent = parseInt(likeCount.textContent) - 1;
+                    } else {
+                        // Like
+                        likeButton.classList.add('active');
+                        likeCount.textContent = parseInt(likeCount.textContent) + 1;
+                        
+                        // Remove dislike if present
+                        if (wasDisliked) {
+                            dislikeButton.classList.remove('active');
+                            dislikeCount.textContent = parseInt(dislikeCount.textContent) - 1;
+                        }
+                    }
+                } else if (action === 'dislike') {
+                    if (wasDisliked) {
+                        // Remove dislike
+                        dislikeButton.classList.remove('active');
+                        dislikeCount.textContent = parseInt(dislikeCount.textContent) - 1;
+                    } else {
+                        // Dislike
+                        dislikeButton.classList.add('active');
+                        dislikeCount.textContent = parseInt(dislikeCount.textContent) + 1;
+                        
+                        // Remove like if present
+                        if (wasLiked) {
+                            likeButton.classList.remove('active');
+                            likeCount.textContent = parseInt(likeCount.textContent) - 1;
+                        }
+                    }
+                }
+            });
             
             // Send request to server
             fetch('handle_reaction.php', {
@@ -2500,46 +2533,32 @@ $posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    // Update counts with server response
-                    likeCount.textContent = data.like_count;
-                    dislikeCount.textContent = data.dislike_count;
-                    
-                    // Update button states based on server response
-                    if (data.user_liked) {
-                        likeButton.classList.add('active');
-                    } else {
-                        likeButton.classList.remove('active');
-                    }
-                    
-                    if (data.user_disliked) {
-                        dislikeButton.classList.add('active');
-                    } else {
-                        dislikeButton.classList.remove('active');
-                    }
-                    
-                    // If this is in the modal, update those counts too
-                    const modal = document.getElementById('postExpansionModal');
-                    if (modal && modal.dataset.postId == postId) {
-                        const modalLikeCount = modal.querySelector('.like-count');
-                        const modalDislikeCount = modal.querySelector('.dislike-count');
-                        const modalLikeBtn = modal.querySelector('.action-btn-expanded:first-child');
-                        const modalDislikeBtn = modal.querySelector('.action-btn-expanded:nth-child(2)');
+                    // Update all instances with server response
+                    allContainers.forEach(container => {
+                        if (!container) return;
                         
-                        if (modalLikeCount) modalLikeCount.textContent = data.like_count;
-                        if (modalDislikeCount) modalDislikeCount.textContent = data.dislike_count;
+                        const likeButton = container.querySelector('.action-btn:first-child');
+                        const dislikeButton = container.querySelector('.action-btn:nth-child(2)');
+                        const likeCount = likeButton.querySelector('.like-count');
+                        const dislikeCount = dislikeButton.querySelector('.dislike-count');
                         
+                        // Update counts
+                        likeCount.textContent = data.like_count;
+                        dislikeCount.textContent = data.dislike_count;
+                        
+                        // Update button states
                         if (data.user_liked) {
-                            modalLikeBtn.classList.add('active');
+                            likeButton.classList.add('active');
                         } else {
-                            modalLikeBtn.classList.remove('active');
+                            likeButton.classList.remove('active');
                         }
                         
                         if (data.user_disliked) {
-                            modalDislikeBtn.classList.add('active');
+                            dislikeButton.classList.add('active');
                         } else {
-                            modalDislikeBtn.classList.remove('active');
+                            dislikeButton.classList.remove('active');
                         }
-                    }
+                    });
                 } else {
                     console.error('Failed to update reaction:', data.error);
                 }
@@ -2549,173 +2568,29 @@ $posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
             });
         }
 
-        // Function to handle reactions in the modal
-        function handleModalReaction(event, postId, action) {
-            event.preventDefault();
-            event.stopPropagation();
+        // Helper function to update the UI for reactions
+        function updateReactionUI(container, data) {
+            const likeButton = container.querySelector('.action-btn:first-child');
+            const dislikeButton = container.querySelector('.action-btn:nth-child(2)');
+            const likeCount = likeButton.querySelector('.like-count');
+            const dislikeCount = dislikeButton.querySelector('.dislike-count');
             
-            const button = event.currentTarget;
-            const likeCount = document.getElementById('modal-like-count');
-            const dislikeCount = document.getElementById('modal-dislike-count');
-            const likeButton = document.querySelector('.action-btn-expanded:nth-child(1)');
-            const dislikeButton = document.querySelector('.action-btn-expanded:nth-child(2)');
+            // Update counts
+            if (likeCount) likeCount.textContent = data.like_count;
+            if (dislikeCount) dislikeCount.textContent = data.dislike_count;
             
-            // Store current state
-            const wasLiked = likeButton.classList.contains('active');
-            const wasDisliked = dislikeButton.classList.contains('active');
-            
-            // Immediately update UI for better user experience
-            if (action === 'like') {
-                // Toggle like state
-                if (wasLiked) {
-                    likeButton.classList.remove('active');
-                    likeCount.textContent = parseInt(likeCount.textContent) - 1;
-                } else {
-                    likeButton.classList.add('active');
-                    likeCount.textContent = parseInt(likeCount.textContent) + 1;
-                    
-                    // If was disliked, remove dislike
-                    if (wasDisliked) {
-                        dislikeButton.classList.remove('active');
-                        dislikeCount.textContent = parseInt(dislikeCount.textContent) - 1;
-                    }
-                }
-            } else if (action === 'dislike') {
-                // Toggle dislike state
-                if (wasDisliked) {
-                    dislikeButton.classList.remove('active');
-                    dislikeCount.textContent = parseInt(dislikeCount.textContent) - 1;
-                } else {
-                    dislikeButton.classList.add('active');
-                    dislikeCount.textContent = parseInt(dislikeCount.textContent) + 1;
-                    
-                    // If was liked, remove like
-                    if (wasLiked) {
-                        likeButton.classList.remove('active');
-                        likeCount.textContent = parseInt(likeCount.textContent) - 1;
-                    }
-                }
+            // Update button states
+            if (data.user_liked) {
+                likeButton.classList.add('active');
+            } else {
+                likeButton.classList.remove('active');
             }
             
-            // Send request to server
-            fetch('handle_reaction.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    post_id: postId,
-                    action: action
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Update counts with server response
-                    likeCount.textContent = data.like_count;
-                    dislikeCount.textContent = data.dislike_count;
-                    
-                    // Update button states based on server response
-                    if (data.user_liked) {
-                        likeButton.classList.add('active');
-                    } else {
-                        likeButton.classList.remove('active');
-                    }
-                    
-                    if (data.user_disliked) {
-                        dislikeButton.classList.add('active');
-                    } else {
-                        dislikeButton.classList.remove('active');
-                    }
-                    
-                    // Also update the corresponding post card if it exists
-                    const postCard = document.querySelector(`.post-card[data-post-id="${postId}"]`);
-                    if (postCard) {
-                        const cardLikeCount = postCard.querySelector('.like-count');
-                        const cardDislikeCount = postCard.querySelector('.dislike-count');
-                        const cardLikeButton = postCard.querySelector('.action-btn:first-child');
-                        const cardDislikeButton = postCard.querySelector('.action-btn:nth-child(2)');
-                        
-                        if (cardLikeCount) cardLikeCount.textContent = data.like_count;
-                        if (cardDislikeCount) cardDislikeCount.textContent = data.dislike_count;
-                        
-                        if (data.user_liked) {
-                            cardLikeButton.classList.add('active');
-                        } else {
-                            cardLikeButton.classList.remove('active');
-                        }
-                        
-                        if (data.user_disliked) {
-                            cardDislikeButton.classList.add('active');
-                        } else {
-                            cardDislikeButton.classList.remove('active');
-                        }
-                    }
-                } else {
-                    // If server request failed, revert UI changes
-                    if (action === 'like') {
-                        if (wasLiked) {
-                            likeButton.classList.add('active');
-                            likeCount.textContent = parseInt(likeCount.textContent) + 1;
-                        } else {
-                            likeButton.classList.remove('active');
-                            likeCount.textContent = parseInt(likeCount.textContent) - 1;
-                            
-                            if (wasDisliked) {
-                                dislikeButton.classList.add('active');
-                                dislikeCount.textContent = parseInt(dislikeCount.textContent) + 1;
-                            }
-                        }
-                    } else if (action === 'dislike') {
-                        if (wasDisliked) {
-                            dislikeButton.classList.add('active');
-                            dislikeCount.textContent = parseInt(dislikeCount.textContent) + 1;
-                        } else {
-                            dislikeButton.classList.remove('active');
-                            dislikeCount.textContent = parseInt(dislikeCount.textContent) - 1;
-                            
-                            if (wasLiked) {
-                                likeButton.classList.add('active');
-                                likeCount.textContent = parseInt(likeCount.textContent) + 1;
-                            }
-                        }
-                    }
-                    
-                    console.error('Failed to update reaction:', data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error updating reaction:', error);
-                
-                // Revert UI changes on error
-                if (action === 'like') {
-                    if (wasLiked) {
-                        likeButton.classList.add('active');
-                        likeCount.textContent = parseInt(likeCount.textContent) + 1;
-                    } else {
-                        likeButton.classList.remove('active');
-                        likeCount.textContent = parseInt(likeCount.textContent) - 1;
-                        
-                        if (wasDisliked) {
-                            dislikeButton.classList.add('active');
-                            dislikeCount.textContent = parseInt(dislikeCount.textContent) + 1;
-                        }
-                    }
-                } else if (action === 'dislike') {
-                    if (wasDisliked) {
-                        dislikeButton.classList.add('active');
-                        dislikeCount.textContent = parseInt(dislikeCount.textContent) + 1;
-                    } else {
-                        dislikeButton.classList.remove('active');
-                        dislikeCount.textContent = parseInt(dislikeCount.textContent) - 1;
-                        
-                        if (wasLiked) {
-                            likeButton.classList.add('active');
-                            likeCount.textContent = parseInt(likeCount.textContent) + 1;
-                        }
-                    }
-                }
-            });
+            if (data.user_disliked) {
+                dislikeButton.classList.add('active');
+            } else {
+                dislikeButton.classList.remove('active');
+            }
         }
     </script>
 </body>
